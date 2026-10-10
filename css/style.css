@@ -333,6 +333,13 @@ details.more[open] > summary { margin-bottom: 8px; }
   transition: opacity .45s ease, transform .45s ease;
 }
 .cover.revealed { opacity: 0; transform: scale(1.03); pointer-events: none; }
+/* An ad before the clip: the player shows through, with YouTube's Skip button at its bottom right.
+   A slim bar stays on top so the song's title never shows when the video itself starts. */
+.stage.ad .yt-slot.active { pointer-events: auto; }
+.stage.ad .cover { bottom: auto; height: max(28%, 52px); }
+.stage.ad .cover-inner { gap: 2px; padding: 6px 12px; }
+.stage.ad .cover-status { font-size: 0.9rem; min-height: 0; }
+.stage.ad .cover-sub { font-size: 0.75rem; min-height: 0; }
 .cover-inner { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
 .ring { position: relative; width: clamp(110px, 24vw, 150px); aspect-ratio: 1; }
 .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }

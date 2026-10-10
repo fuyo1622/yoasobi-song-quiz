@@ -6,12 +6,13 @@ import {
   ICONS, youtubeUrl, englishTitle, sleep,
 } from './common.js';
 import { MODES, pickClip, canPlay } from './clips.js';
-import { ClipPlayer, PlayerError, CancelledError, AutoplayBlockedError } from './player.js';
+import { ClipPlayer, PlayerError, CancelledError, AutoplayBlockedError, AdError } from './player.js';
 import { t, lang, setLang, htmlLang, LANGS } from './i18n.js';
 import { sourcesFor } from './sources.js';
 import { openReport } from './report.js';
 
 const SETTINGS_KEY = 'yq.settings.v1';
+const SKIP_AFTER = 5;   // seconds into an ad when YouTube's Skip button appears
 const DEFAULTS = {
   style: 'quiz',
   mode: 'chorus',
@@ -309,6 +310,7 @@ function eqBars() {
 }
 
 function cover(kind, ...content) {
+  els.stage.classList.toggle('ad', kind === 'ad');
   els.cover.classList.toggle('revealed', kind === 'revealed');
   els.cover.classList.toggle('playing', kind === 'playing');
   if (kind !== 'revealed') els.coverInner.replaceChildren(...content);
@@ -441,9 +443,35 @@ function replacementSong(game, q) {
   return list.length ? list[Math.floor(Math.random() * list.length)] : null;
 }
 
+function loadingCover(game, i) {
+  cover('loading', h('div', { class: 'spinner' }), h('div', { class: 'cover-status' }, t('play.loading')),
+    h('div', { class: 'cover-sub' }, t(isPractice(game.settings) ? 'play.ofClips' : 'play.of', { n: i + 1, total: game.questions.length })));
+}
+
+/**
+ * An ad plays before question i's clip (`time` = seconds into it, null = none). While that question
+ * is on screen the ad shows, so it can be skipped, but only from 5 s in: before that YouTube's
+ * "skip in …" box shows the video's thumbnail, which could give the song away.
+ */
+function showAd(game, i, time) {
+  const q = game.questions[i];
+  if (!q) return;
+  q.ad = time;
+  if (!live(game, i) || game.phase !== 'loading') return;
+  const view = time == null ? 'none' : time >= SKIP_AFTER ? 'skip' : 'wait';
+  if (view === game.adView) return;
+  game.adView = view;
+  if (view === 'none') loadingCover(game, i);
+  else if (view === 'wait') {
+    cover('loading', h('div', { class: 'spinner' }), h('div', { class: 'cover-status' }, t('play.ad')),
+      h('div', { class: 'cover-sub' }, t('play.ad.wait')));
+  } else cover('ad', h('div', { class: 'cover-status' }, t('play.ad')), h('div', { class: 'cover-sub' }, t('play.ad.sub')));
+}
+
 /**
  * Buffer question i on its player. If the MV refuses to play here (age check, region,
- * embedding) the song's audio upload is used instead; if that fails too, another song.
+ * embedding) or starts with an ad, the song's audio upload is used instead; if that won't
+ * play either, another song. An ad before the audio upload is waited for (and shown).
  */
 function prepareQuestion(game, i) {
   const q = game.questions[i];
@@ -453,9 +481,15 @@ function prepareQuestion(game, i) {
     const run = (async () => {
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
-          await player.prepare(q.src.videoId, q.src.toVideo(q.clip.start));
+          await player.prepare(q.src.videoId, q.src.toVideo(q.clip.start),
+            { skipAds: q.src.kind === 'mv', onAd: (time) => showAd(game, i, time) });
           return;
         } catch (err) {
+          if (err instanceof AdError && !game.over) {
+            console.info(`[quiz] ${q.song.title}: the MV starts with an ad. Using the audio track.`);
+            q.src = q.srcs.find((x) => x.kind === 'audio');
+            continue;
+          }
           if (!(err instanceof PlayerError) || game.over) throw err;
           if (q.src.kind === 'mv') {
             game.mvFailed.add(q.song.id);
@@ -486,9 +520,9 @@ async function runQuestion(game, i) {
   clearPanel();
   renderTop();
   setActiveSlot(i % 2);
-  const practice = isPractice(game.settings);
-  cover('loading', h('div', { class: 'spinner' }), h('div', { class: 'cover-status' }, t('play.loading')),
-    h('div', { class: 'cover-sub' }, t(practice ? 'play.ofClips' : 'play.of', { n: i + 1, total: game.questions.length })));
+  loadingCover(game, i);
+  game.adView = 'none';
+  if (game.questions[i].ad != null) showAd(game, i, game.questions[i].ad);
   try {
     await prepareQuestion(game, i);
   } catch (err) {
@@ -942,6 +976,7 @@ function renderLanguagePicker() {
 
 async function boot() {
   els.modeGrid = $('#mode-grid');
+  els.stage = $('#stage');
   els.cover = $('#cover');
   els.coverInner = $('#cover-inner');
   els.options = $('#options');

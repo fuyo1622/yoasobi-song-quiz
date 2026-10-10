@@ -5,6 +5,11 @@
 // position: playback starts PREROLL seconds early at volume 0 (so the audio output is already
 // running), the sound opens exactly at `start`, and it stops at `start + seconds`. Buffering,
 // a slow audio device or an ad before the content can therefore neither cut nor shift a clip.
+//
+// YouTube often plays an ad before an embedded video (on public sites; not on localhost). While it
+// does, the player stays "unstarted", loads its "ad" module and its clock runs through the ad.
+// prepare() spots that and either gives up at once (AdError, so the caller can pick another
+// video) or waits and reports the ad, so the page can show it with YouTube's Skip button.
 
 const STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
 export const PREROLL = 0.25;
@@ -13,6 +18,9 @@ const STOP_EARLY = 0.08;     // so does the pause command
 const FADE_OUT = 0.15;
 const CLIP_TICK_MS = 15;
 const STALL_MS = 20000;      // no progress for this long while playing a clip = give up
+const LOAD_MS = 30000;       // a video that hasn't started by then counts as stuck
+const AD_CONFIRM_MS = 400;   // ad signs must last this long (they can flicker while a video loads)
+const AD_WAIT_MS = 180000;   // how long to wait for an ad the viewer can see and skip
 
 export class PlayerError extends Error {
   constructor(code) {
@@ -34,6 +42,7 @@ export class TimeoutError extends Error { constructor(what) { super(`timed out: 
 export class AutoplayBlockedError extends Error {
   constructor() { super('The browser blocked playback. Click play to continue.'); this.name = 'AutoplayBlockedError'; }
 }
+export class AdError extends Error { constructor() { super('YouTube is playing an ad first.'); this.name = 'AdError'; } }
 
 let apiPromise = null;
 export function loadYouTubeAPI() {
@@ -152,6 +161,7 @@ export class ClipPlayer {
 
   /** Poll `check` until it returns truthy; rejects on player error, timeout or cancellation. */
   _poll(check, timeoutMs, op, what) {
+    const limit = typeof timeoutMs === 'function' ? timeoutMs : () => timeoutMs;
     return new Promise((resolve, reject) => {
       const t0 = performance.now();
       const tick = () => {
@@ -164,15 +174,23 @@ export class ClipPlayer {
         let res;
         try { res = check(); } catch (err) { return reject(err); }
         if (res) return resolve(res);
-        if (performance.now() - t0 > timeoutMs) return reject(new TimeoutError(what));
+        if (performance.now() - t0 > limit()) return reject(new TimeoutError(what));
         setTimeout(tick, 40);
       };
       tick();
     });
   }
 
-  /** Load + buffer `videoId` muted and park it (paused) just before `start`. */
-  async prepare(videoId, start) {
+  _hasAdModule() {
+    try { return (this.player.getOptions() || []).includes('ad'); } catch { return false; }   // not in every player version
+  }
+
+  /**
+   * Load + buffer `videoId` muted and park it (paused) just before `start`. If an ad plays
+   * first: with `skipAds` it fails at once with an AdError; otherwise it waits for the ad (up to
+   * AD_WAIT_MS), calling onAd(seconds into the ad) while one plays and onAd(null) when it is over.
+   */
+  async prepare(videoId, start, { skipAds = false, onAd } = {}) {
     await this.init();
     const op = ++this.op;
     this.errorCode = null;
@@ -187,13 +205,41 @@ export class ClipPlayer {
       p.seekTo(from, true);
       p.playVideo();
     }
+    // Ad signs while the video is "unstarted": the "ad" module loads (it stays loaded after an ad, so
+    // only counts if it appears now), or the clock runs away from `from` (a stale reading doesn't run).
+    const moduleBefore = this._hasAdModule();
+    let signSince = null;   // when the signs began; they must last AD_CONFIRM_MS
+    let signClock = null;   // the clock then
+    let adSeen = false;     // an ad played during this load, so allow AD_WAIT_MS
+    let adShown = false;    // onAd last reported an ad
+    const report = (time) => { adShown = time != null; if (onAd) onAd(time); };
     try {
       // Playing near `from` means the content itself (not an ad) is buffered there.
-      await this._poll(() => this.state === STATE.PLAYING && Math.abs(this.time() - from) < 4, 30000, op, 'loading video');
+      await this._poll(() => {
+        const t = this.time();
+        if (this.state === STATE.PLAYING && Math.abs(t - from) < 4) return true;
+        const unstarted = this.state === STATE.UNSTARTED && this.duration() > 0;
+        const away = unstarted && Math.abs(t - from) > 1.5;
+        const module = unstarted && !moduleBefore && this._hasAdModule();
+        if (!away && !module) {
+          signSince = null;
+          if (adShown) report(null);
+          return false;
+        }
+        if (signSince == null) { signSince = performance.now(); signClock = t; }
+        if (performance.now() - signSince < AD_CONFIRM_MS || !(adSeen || module || t !== signClock)) return false;
+        if (skipAds) throw new AdError();
+        adSeen = true;
+        report(away ? t : 0);   // during an ad the player's clock runs through the ad
+        return false;
+      }, () => (adSeen ? AD_WAIT_MS : LOAD_MS), op, 'loading video');
       try { p.setPlaybackQuality(this.quality); } catch { /* optional API */ }
     } catch (err) {
-      if (err instanceof PlayerError || err instanceof TimeoutError) this.videoId = null;
+      if (err instanceof AdError) { try { p.stopVideo(); } catch { /* player gone */ } }
+      if (err instanceof PlayerError || err instanceof TimeoutError || err instanceof AdError) this.videoId = null;
       throw err;
+    } finally {
+      if (adShown) report(null);   // before pausing, which brings up YouTube's title and suggestions
     }
     p.pauseVideo();
     p.seekTo(from, true);
