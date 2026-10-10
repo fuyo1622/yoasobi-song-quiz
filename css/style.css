@@ -255,7 +255,7 @@ select.num-input { font-family: var(--font); }
 .hero p { margin: 10px auto 0; max-width: 520px; color: var(--text-dim); }
 
 .mode-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.mode-grid.two { grid-template-columns: repeat(2, 1fr); }
+.mode-grid.two, .mode-grid.four { grid-template-columns: repeat(2, 1fr); }
 .mode-card {
   text-align: left; padding: 14px 14px 16px; border-radius: var(--radius-sm);
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
@@ -552,7 +552,7 @@ details.more[open] > summary { margin-bottom: 8px; }
   .eq { height: 26px; gap: 4px; }
   .eq i { width: 4px; }
   .pool-songs { grid-template-columns: repeat(auto-fill, minmax(136px, 1fr)); }
-  .mode-grid { grid-template-columns: 1fr; }
+  .mode-grid, .mode-grid.four { grid-template-columns: 1fr; }
   .mode-card { min-height: 0; display: grid; grid-template-columns: 34px 1fr; column-gap: 12px; }
   .mode-card .mode-icon { grid-row: 1 / span 2; }
   .options { grid-template-columns: 1fr; }

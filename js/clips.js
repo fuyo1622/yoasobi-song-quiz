@@ -8,6 +8,7 @@
 
 export const MODES = {
   chorus: { label: 'Chorus', jp: 'サビから', desc: 'Every clip starts right at a chorus.' },
+  inchorus: { label: 'In the chorus', jp: 'サビのどこか', desc: 'A random clip from inside a chorus.' },
   random: { label: 'Anywhere', jp: 'ランダム', desc: 'A random clip from anywhere in the song.' },
   nochorus: { label: 'No chorus', jp: 'サビ以外', desc: 'A random clip that never touches a chorus. Hard!' },
 };
@@ -59,6 +60,19 @@ export function chorusStarts(song, len, which = 'any') {
   return which === 'first' ? ok.slice(0, 1) : ok;
 }
 
+/**
+ * Where an "in the chorus" clip may start: anywhere in a chorus that keeps the whole clip inside
+ * it (and inside the music). A chorus shorter than the clip only offers its own start.
+ */
+function chorusWindows(song, len, which) {
+  const ranges = musicRanges(song);
+  return chorusStarts(song, len, which).map((chorus) => {
+    const [a, b] = chorus;
+    const [, end] = ranges.find(([ra, rb]) => a >= ra - 0.01 && a + len <= rb + 0.01);
+    return { chorus, from: a, to: Math.max(a, Math.min(b, end) - len) };
+  });
+}
+
 /** Windows in which a clip of `len` seconds may START. */
 function startWindows(song, len, excludeChorus) {
   return musicRanges(song, { excludeChorus })
@@ -67,7 +81,7 @@ function startWindows(song, len, excludeChorus) {
 }
 
 export function canPlay(song, mode, len, opts = {}) {
-  if (mode === 'chorus') return chorusStarts(song, len, opts.chorusWhich).length > 0;
+  if (mode === 'chorus' || mode === 'inchorus') return chorusStarts(song, len, opts.chorusWhich).length > 0;
   return startWindows(song, len, mode === 'nochorus').length > 0;
 }
 
@@ -84,6 +98,13 @@ export function pickClip(song, mode, len, opts = {}) {
     const i = Math.floor(rng() * starts.length);
     const start = starts[i][0];
     return { start, end: start + len, chorusIndex: song.chorus.indexOf(starts[i]) };
+  }
+  if (mode === 'inchorus') {
+    const windows = chorusWindows(song, len, opts.chorusWhich);
+    if (!windows.length) return null;
+    const w = windows[Math.floor(rng() * windows.length)];
+    const start = Math.round((w.from + rng() * (w.to - w.from)) * 100) / 100;
+    return { start, end: start + len, chorusIndex: song.chorus.indexOf(w.chorus) };
   }
 
   const windows = startWindows(song, len, mode === 'nochorus');

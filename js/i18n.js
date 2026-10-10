@@ -33,6 +33,8 @@ const STRINGS = Object.fromEntries([
   s('mode.title', 'Mode', '模式', 'モード'),
   s('mode.chorus', 'Chorus', '副歌', 'サビ'),
   s('mode.chorus.desc', 'Every clip starts right at a chorus.', '每段都從副歌開頭播放。', '必ずサビの頭から再生します。'),
+  s('mode.inchorus', 'In the chorus', '副歌隨機', 'サビのどこか'),
+  s('mode.inchorus.desc', 'A random clip from inside a chorus.', '從副歌裡任意一段隨機播放。', 'サビの中のどこかをランダムに再生します。'),
   s('mode.random', 'Anywhere', '隨機', 'ランダム'),
   s('mode.random.desc', 'A random clip from anywhere in the song.', '從歌曲任意位置隨機播放。', '曲のどこからでもランダムに再生します。'),
   s('mode.nochorus', 'No chorus', '非副歌', 'サビ以外'),

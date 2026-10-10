@@ -27,7 +27,7 @@ const DEFAULTS = {
   autoNext: false,
 };
 const STYLES = ['quiz', 'practice'];
-const MODE_ICONS = { chorus: ICONS.chorus, random: ICONS.shuffle, nochorus: ICONS.noChorus };
+const MODE_ICONS = { chorus: ICONS.chorus, inchorus: ICONS.inChorus, random: ICONS.shuffle, nochorus: ICONS.noChorus };
 const STYLE_ICONS = { quiz: ICONS.check, practice: ICONS.eye };
 const CLIP_PRESETS = [1, 2, 3, 5, 10];
 const THINK_PRESETS = [5, 10, 15, 30];
