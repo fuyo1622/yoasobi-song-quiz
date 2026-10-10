@@ -12,6 +12,12 @@
 // prepare() spots that, waits for the ad and reports it, so the page can show it with YouTube's
 // Skip button.
 //
+// Firefox builds a video's sound output only when it first plays audibly, and does not wait for
+// it: on that first play some clips lost 75-150 ms of their start (measured on Firefox's real sound
+// output), while later plays of the same video started on time. So in Firefox prepare() plays the
+// song's silent last moment at 1% volume once ("warm-up") before parking at the clip start, and
+// playClip() waits for a seek to land before it plays.
+//
 // iPhones play sound only when the player itself is tapped, and ignore volume changes. When a
 // clip would play muted, playClip() fails with AutoplayBlockedError; with `userStarted` it then
 // waits for the tap instead of starting playback itself.
@@ -25,6 +31,8 @@ const LOAD_MS = 30000;       // a video that hasn't started by then counts as st
 const AD_CONFIRM_MS = 400;   // ad signs must last this long (they can flicker while a video loads)
 const AD_WAIT_MS = 180000;   // how long to wait for an ad the viewer can see and skip
 const MUTE_CHECK_MS = 350;   // by then the player reports whether the browser let it play with sound
+const WARM_UP = typeof navigator !== 'undefined' && /Firefox\//.test(navigator.userAgent);
+const WARM_UP_MS = 250;      // how long the warm-up plays (at volume 1, in the song's last second)
 
 export class PlayerError extends Error {
   constructor(code) {
@@ -83,6 +91,8 @@ export class ClipPlayer {
     this.player = null;
     this.state = STATE.UNSTARTED;
     this.stateChanges = 0;
+    this.warmUp = WARM_UP;
+    this.warmedFor = null;
     this.errorCode = null;
     this.op = 0;
     this.videoId = null;
@@ -245,9 +255,31 @@ export class ClipPlayer {
       if (adShown) report(null);   // before pausing, which brings up YouTube's title and suggestions
     }
     p.pauseVideo();
+    if (this.warmUp && this.warmedFor !== videoId) await this._warmUp(op);
     p.seekTo(from, true);
     await this._poll(() => this.state === STATE.PAUSED && Math.abs(this.time() - from) < 0.1, 4000, op, 'seeking')
       .catch((err) => { if (err instanceof CancelledError || err instanceof PlayerError) throw err; });
+  }
+
+  /** Firefox: play the song's last moment at volume 1 once, so its sound output exists before the clip. */
+  async _warmUp(op) {
+    const p = this.player;
+    const at = Math.max(0, this.duration() - 1);
+    p.seekTo(at, true);
+    p.setVolume(1);
+    p.unMute();
+    p.playVideo();
+    try {
+      await this._poll(() => this.state === STATE.PLAYING && this.time() >= at - 0.1, 4000, op, 'warming up');
+      await sleep(WARM_UP_MS);
+      if (op !== this.op) throw new CancelledError();
+      this.warmedFor = this.videoId;
+    } catch (err) {
+      if (err instanceof CancelledError || err instanceof PlayerError) throw err;
+    } finally {
+      // stays unmuted (at volume 1, paused): muting again could make Firefox drop the sound output
+      if (op === this.op) p.pauseVideo();
+    }
   }
 
   _isMuted() {
@@ -268,7 +300,12 @@ export class ClipPlayer {
     const p = this.player;
     const end = start + seconds;
     const changes = this.stateChanges;
-    if (this.state === STATE.ENDED || Math.abs(this.time() - start) > 0.05) p.seekTo(start, true);
+    if (this.state === STATE.ENDED || Math.abs(this.time() - start) > 0.05) {
+      p.seekTo(start, true);
+      // let the seek land before playing (Firefox could drop the start of a clip played mid-seek)
+      await this._poll(() => this.state !== STATE.PLAYING && Math.abs(this.time() - start) < 0.05, 1500, op, 'seeking')
+        .catch((err) => { if (err instanceof CancelledError || err instanceof PlayerError) throw err; });
+    }
     p.unMute();
     p.setVolume(volume);
     if (!userStarted) p.playVideo();
