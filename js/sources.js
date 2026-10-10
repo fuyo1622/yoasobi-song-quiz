@@ -1,9 +1,10 @@
 // Which video plays a song, and how its times map onto that video.
 //
-// All timings in data/songs.json are on the audio-only upload (`videoId`). When a song has an
-// `mvMap`, the official MV (`mvId`) is played instead: each [start, end, offset] entry says that
-// audio time t inside [start, end) is MV time t + offset (tools/align_mv.py measures these).
-// Clips are only taken from inside one mapped stretch, so they never cross an MV-only scene.
+// Clips play from the audio-only upload (the "Topic" track, `videoId`), which all timings in
+// data/songs.json are measured on. When it won't play and the song has an `mvMap`, the official
+// MV (`mvId`) is used instead: each [start, end, offset] entry says that audio time t inside
+// [start, end) is MV time t + offset (tools/align_mv.py measures these). MV clips are only taken
+// from inside one mapped stretch, so they never cross an MV-only scene.
 import { subtract } from './clips.js';
 
 /** Offset for audio time t, or null when t is not covered by the map. */
@@ -22,7 +23,7 @@ function throughMap(song, map) {
 }
 
 /**
- * Playback sources for a song, best first: the MV (when mapped) and the audio upload.
+ * Playback sources for a song, best first: the audio upload, then the MV (when mapped).
  * Each source: { kind: 'mv'|'audio', videoId, song (for picking clips), toVideo(t) }.
  */
 export function sourcesFor(song) {
@@ -38,7 +39,7 @@ export function sourcesFor(song) {
       return Math.round((t + (off ?? map[0][2])) * 100) / 100;
     },
   };
-  return [mv, audio];
+  return [audio, mv];
 }
 
 /** Audio-upload time for a time on the given source's video (for reports). */

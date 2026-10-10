@@ -340,6 +340,11 @@ details.more[open] > summary { margin-bottom: 8px; }
 .stage.ad .cover-inner { gap: 2px; padding: 6px 12px; }
 .stage.ad .cover-status { font-size: 0.9rem; min-height: 0; }
 .stage.ad .cover-sub { font-size: 0.75rem; min-height: 0; }
+/* iPhones play sound only when the player itself is tapped: the cover stays on top but lets the tap through. */
+.stage.tap .cover { pointer-events: none; }
+.stage.tap .yt-slot.active { pointer-events: auto; }
+.tap-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.14); }
+.tap-icon svg { width: 30px; height: 30px; margin-left: 4px; }
 .cover-inner { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 16px; }
 .ring { position: relative; width: clamp(110px, 24vw, 150px); aspect-ratio: 1; }
 .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }

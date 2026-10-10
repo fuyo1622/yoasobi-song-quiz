@@ -3,10 +3,10 @@
 // score; you listen, then show the answer.
 import {
   $, h, store, loadSongs, shuffle, sample, fmtTime, initTheme, confirmDialog, toast,
-  ICONS, youtubeUrl, englishTitle, sleep,
+  ICONS, youtubeUrl, englishTitle, sleep, isIOS,
 } from './common.js';
 import { MODES, pickClip, canPlay } from './clips.js';
-import { ClipPlayer, PlayerError, CancelledError, AutoplayBlockedError, AdError } from './player.js';
+import { ClipPlayer, PlayerError, CancelledError, AutoplayBlockedError } from './player.js';
 import { t, lang, setLang, htmlLang, LANGS } from './i18n.js';
 import { sourcesFor } from './sources.js';
 import { openReport } from './report.js';
@@ -311,6 +311,7 @@ function eqBars() {
 
 function cover(kind, ...content) {
   els.stage.classList.toggle('ad', kind === 'ad');
+  els.stage.classList.toggle('tap', kind === 'tap');
   els.cover.classList.toggle('revealed', kind === 'revealed');
   els.cover.classList.toggle('playing', kind === 'playing');
   if (kind !== 'revealed') els.coverInner.replaceChildren(...content);
@@ -325,7 +326,7 @@ const live = (game, i) => quiz === game && !game.over && game.index === i;
 
 function makeQuestion(game, song) {
   const { mode, clipLen } = game.settings;
-  const srcs = sourcesFor(song).filter((x) => !(x.kind === 'mv' && game.mvFailed.has(song.id)));
+  const srcs = sourcesFor(song).filter((x) => !game.failed.has(x.videoId));
   const src = srcs.find((x) => canPlay(x.song, mode, clipLen)) || srcs[srcs.length - 1];
   const clip = pickClip(src.song, mode, clipLen);
   const source = game.pool.length >= 4 ? game.pool : songs;
@@ -350,7 +351,9 @@ function buildQuestions(game) {
 }
 
 async function ensurePlayers() {
-  if (!players.length) players.push(new ClipPlayer($('#slot-0')), new ClipPlayer($('#slot-1')));
+  // iPhones need a tap on the player itself to play sound; YouTube's own play button takes it there.
+  const controls = isIOS();
+  if (!players.length) players.push(new ClipPlayer($('#slot-0'), { controls }), new ClipPlayer($('#slot-1'), { controls }));
   await Promise.all(players.map((p) => p.init()));
 }
 
@@ -368,7 +371,7 @@ async function startQuiz() {
   const game = {
     settings: { ...settings }, pool, playable,
     index: 0, phase: 'loading', correct: 0, over: false,
-    unavailable: new Set(), mvFailed: new Set(), replaced: 0,
+    unavailable: new Set(), failed: new Set(), replaced: 0,
   };
   game.questions = buildQuestions(game);
   quiz = game;
@@ -469,9 +472,9 @@ function showAd(game, i, time) {
 }
 
 /**
- * Buffer question i on its player. If the MV refuses to play here (age check, region,
- * embedding) or starts with an ad, the song's audio upload is used instead; if that won't
- * play either, another song. An ad before the audio upload is waited for (and shown).
+ * Buffer question i on its player. If the audio upload won't play here (region, removed), the
+ * song's MV is used instead (clip picked again on the MV); if that won't play either, another
+ * song. An ad before the video is waited for (and shown).
  */
 function prepareQuestion(game, i) {
   const q = game.questions[i];
@@ -481,20 +484,17 @@ function prepareQuestion(game, i) {
     const run = (async () => {
       for (let attempt = 0; attempt < 6; attempt++) {
         try {
-          await player.prepare(q.src.videoId, q.src.toVideo(q.clip.start),
-            { skipAds: q.src.kind === 'mv', onAd: (time) => showAd(game, i, time) });
+          await player.prepare(q.src.videoId, q.src.toVideo(q.clip.start), { onAd: (time) => showAd(game, i, time) });
           return;
         } catch (err) {
-          if (err instanceof AdError && !game.over) {
-            console.info(`[quiz] ${q.song.title}: the MV starts with an ad. Using the audio track.`);
-            q.src = q.srcs.find((x) => x.kind === 'audio');
-            continue;
-          }
           if (!(err instanceof PlayerError) || game.over) throw err;
-          if (q.src.kind === 'mv') {
-            game.mvFailed.add(q.song.id);
-            console.warn(`[quiz] ${q.song.title}: the MV won't play here (${err.message}). Using the audio track.`);
-            q.src = q.srcs.find((x) => x.kind === 'audio');
+          game.failed.add(q.src.videoId);
+          const { mode, clipLen } = game.settings;
+          const next = q.srcs.find((x) => !game.failed.has(x.videoId) && canPlay(x.song, mode, clipLen));
+          if (next) {
+            console.warn(`[quiz] ${q.song.title}: the ${q.src.kind === 'mv' ? 'MV' : 'audio track'} won't play here (${err.message}). Using the ${next.kind === 'mv' ? 'MV' : 'audio track'}.`);
+            q.src = next;
+            q.clip = pickClip(next.song, mode, clipLen);
             continue;
           }
           game.unavailable.add(q.song.id);
@@ -547,20 +547,33 @@ async function runQuestion(game, i) {
   playPhase(game, i, false);
 }
 
-async function playPhase(game, i, isReplay) {
+async function playPhase(game, i, isReplay, userStarted = false) {
   const q = game.questions[i];
   const player = players[i % 2];
   game.phase = isReplay ? 'replaying' : 'playing';
-  cover('starting', ring(eqBars(), 0), h('div', { class: 'cover-status' }, t(isReplay ? 'play.replaying' : 'play.listen')),
+  const listening = () => cover('starting', ring(eqBars(), 0), h('div', { class: 'cover-status' }, t(isReplay ? 'play.replaying' : 'play.listen')),
     h('div', { class: 'cover-sub' }, t('play.clipLen', { len: fmtSec(game.settings.clipLen) })));
+  if (!userStarted) listening();
   try {
     await player.playClip(q.src.toVideo(q.clip.start), game.settings.clipLen, {
       volume: game.settings.volume,
+      userStarted,
       onProgress: setRing,
-      onStart: () => { if (live(game, i)) els.cover.classList.add('playing'); },
+      onStart: () => {
+        if (!live(game, i)) return;
+        if (userStarted) listening();
+        els.cover.classList.add('playing');
+      },
     });
   } catch (err) {
     if (err instanceof CancelledError || !live(game, i)) return;
+    if (err instanceof AutoplayBlockedError && isIOS() && !userStarted) {
+      // The cover lets the tap through to the player, which is the only way an iPhone plays sound.
+      cover('tap', h('div', { class: 'tap-icon', html: ICONS.play }), h('div', { class: 'cover-status' }, t('play.tap')),
+        h('div', { class: 'cover-sub' }, t('play.tap.sub')));
+      playPhase(game, i, isReplay, true);
+      return;
+    }
     if (err instanceof AutoplayBlockedError) {
       cover('blocked',
         h('div', { class: 'cover-status' }, t('play.blocked')),

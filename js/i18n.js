@@ -116,6 +116,8 @@ const STRINGS = Object.fromEntries([
   s('play.blocked', 'Your browser paused the audio', '瀏覽器暫停了聲音', 'ブラウザが音声を止めました'),
   s('play.blocked.sub', 'Click to allow sound and play the clip.', '點一下以允許聲音並播放片段。', 'クリックして音声を許可し、再生してください。'),
   s('play.playClip', 'Play clip', '播放片段', '再生'),
+  s('play.tap', 'Tap here to play the clip', '點這裡播放片段', 'ここをタップして再生'),
+  s('play.tap.sub', 'Phones play sound only after a tap here.', '手機要先點一下這裡才會播放聲音。', 'スマホでは、ここをタップすると音が出ます。'),
   s('play.failed', 'This clip could not be played', '無法播放這個片段', 'この部分を再生できませんでした'),
   s('play.retry', 'Retry', '重試', '再試行'),
   s('play.skip', 'Skip question', '跳過此題', 'スキップ'),

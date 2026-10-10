@@ -1,26 +1,30 @@
 // YouTube IFrame API wrapper that can play an exact slice of a video.
 //
-// prepare(videoId, start) loads + buffers the video muted and leaves it paused just before
-// `start`, so playClip(start, seconds) can start instantly. A clip is timed by the video's own
-// position: playback starts PREROLL seconds early at volume 0 (so the audio output is already
-// running), the sound opens exactly at `start`, and it stops at `start + seconds`. Buffering,
-// a slow audio device or an ad before the content can therefore neither cut nor shift a clip.
+// prepare(videoId, start) loads + buffers the video muted and leaves it paused exactly at `start`,
+// so playClip(start, seconds) can start instantly. The sound is switched on while the video is
+// still paused and then it plays: the iframe carries out commands in order, so the clip begins
+// exactly at `start` however slowly the commands arrive. (Opening the volume at the right moment
+// during playback cut the start of clips on slower PCs.) A clip ends by the video's own position,
+// faded out and paused at `start + seconds`, so buffering can neither cut nor shift it.
 //
 // YouTube often plays an ad before an embedded video (on public sites; not on localhost). While it
 // does, the player stays "unstarted", loads its "ad" module and its clock runs through the ad.
-// prepare() spots that and either gives up at once (AdError, so the caller can pick another
-// video) or waits and reports the ad, so the page can show it with YouTube's Skip button.
+// prepare() spots that, waits for the ad and reports it, so the page can show it with YouTube's
+// Skip button.
+//
+// iPhones play sound only when the player itself is tapped, and ignore volume changes. When a
+// clip would play muted, playClip() fails with AutoplayBlockedError; with `userStarted` it then
+// waits for the tap instead of starting playback itself.
 
 const STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 };
-export const PREROLL = 0.25;
-const OPEN_EARLY = 0.1;      // raising the volume reaches the iframe ~0.1 s later (measured)
-const STOP_EARLY = 0.08;     // so does the pause command
+const STOP_EARLY = 0.08;     // the pause command reaches the iframe ~0.1 s late (measured)
 const FADE_OUT = 0.15;
 const CLIP_TICK_MS = 15;
 const STALL_MS = 20000;      // no progress for this long while playing a clip = give up
 const LOAD_MS = 30000;       // a video that hasn't started by then counts as stuck
 const AD_CONFIRM_MS = 400;   // ad signs must last this long (they can flicker while a video loads)
 const AD_WAIT_MS = 180000;   // how long to wait for an ad the viewer can see and skip
+const MUTE_CHECK_MS = 350;   // by then the player reports whether the browser let it play with sound
 
 export class PlayerError extends Error {
   constructor(code) {
@@ -42,7 +46,6 @@ export class TimeoutError extends Error { constructor(what) { super(`timed out: 
 export class AutoplayBlockedError extends Error {
   constructor() { super('The browser blocked playback. Click play to continue.'); this.name = 'AutoplayBlockedError'; }
 }
-export class AdError extends Error { constructor() { super('YouTube is playing an ad first.'); this.name = 'AdError'; } }
 
 let apiPromise = null;
 export function loadYouTubeAPI() {
@@ -79,6 +82,7 @@ export class ClipPlayer {
     this.quality = quality;
     this.player = null;
     this.state = STATE.UNSTARTED;
+    this.stateChanges = 0;
     this.errorCode = null;
     this.op = 0;
     this.videoId = null;
@@ -139,6 +143,7 @@ export class ClipPlayer {
           },
           onStateChange: (e) => {
             this.state = e.data;
+            this.stateChanges++;
             if (this.onStateChange) this.onStateChange(e.data);
           },
           onError: (e) => { this.errorCode = e.data; },
@@ -186,16 +191,16 @@ export class ClipPlayer {
   }
 
   /**
-   * Load + buffer `videoId` muted and park it (paused) just before `start`. If an ad plays
-   * first: with `skipAds` it fails at once with an AdError; otherwise it waits for the ad (up to
-   * AD_WAIT_MS), calling onAd(seconds into the ad) while one plays and onAd(null) when it is over.
+   * Load + buffer `videoId` muted and park it (paused) at `start`. If an ad plays first, it waits
+   * for the ad (up to AD_WAIT_MS), calling onAd(seconds into the ad) while one plays and onAd(null)
+   * when it is over.
    */
-  async prepare(videoId, start, { skipAds = false, onAd } = {}) {
+  async prepare(videoId, start, { onAd } = {}) {
     await this.init();
     const op = ++this.op;
     this.errorCode = null;
     const p = this.player;
-    const from = Math.max(0, start - PREROLL);
+    const from = Math.max(0, start);
     p.mute();
     if (this.videoId !== videoId) {
       this.videoId = videoId;
@@ -228,46 +233,50 @@ export class ClipPlayer {
         }
         if (signSince == null) { signSince = performance.now(); signClock = t; }
         if (performance.now() - signSince < AD_CONFIRM_MS || !(adSeen || module || t !== signClock)) return false;
-        if (skipAds) throw new AdError();
         adSeen = true;
         report(away ? t : 0);   // during an ad the player's clock runs through the ad
         return false;
       }, () => (adSeen ? AD_WAIT_MS : LOAD_MS), op, 'loading video');
       try { p.setPlaybackQuality(this.quality); } catch { /* optional API */ }
     } catch (err) {
-      if (err instanceof AdError) { try { p.stopVideo(); } catch { /* player gone */ } }
-      if (err instanceof PlayerError || err instanceof TimeoutError || err instanceof AdError) this.videoId = null;
+      if (err instanceof PlayerError || err instanceof TimeoutError) this.videoId = null;
       throw err;
     } finally {
       if (adShown) report(null);   // before pausing, which brings up YouTube's title and suggestions
     }
     p.pauseVideo();
     p.seekTo(from, true);
-    await this._poll(() => this.state === STATE.PAUSED && Math.abs(this.time() - from) < 0.35, 4000, op, 'seeking')
+    await this._poll(() => this.state === STATE.PAUSED && Math.abs(this.time() - from) < 0.1, 4000, op, 'seeking')
       .catch((err) => { if (err instanceof CancelledError || err instanceof PlayerError) throw err; });
   }
 
+  _isMuted() {
+    try { return this.player.isMuted(); } catch { return false; }
+  }
+
   /**
-   * Play `seconds` of the video from `start` (the player should be prepared). The sound is
-   * driven by the video's position: silent until `start`, faded out at `start + seconds`.
-   * onStart() fires when the sound opens; onProgress(fraction 0..1) while playing.
+   * Play `seconds` of the video from `start` (the player should be prepared): the sound is set
+   * while it is paused at `start`, then it plays, and it is faded out and paused by its own
+   * position at `start + seconds`. onStart() fires when it plays; onProgress(fraction 0..1) while
+   * it plays. Throws AutoplayBlockedError when the browser won't let it play with sound; with
+   * `userStarted` it waits for the viewer to start it by tapping the player instead.
    */
-  async playClip(start, seconds, { volume = 80, onProgress, onStart } = {}) {
+  async playClip(start, seconds, { volume = 80, onProgress, onStart, userStarted = false } = {}) {
     await this.init();
     const op = ++this.op;
     this.errorCode = null;
     const p = this.player;
-    const from = Math.max(0, start - PREROLL);
     const end = start + seconds;
-    const here = this.time();
-    if (this.state === STATE.ENDED || here < from - 0.05 || here > start - OPEN_EARLY) p.seekTo(from, true);
-    // unMute first: YouTube bumps a volume of 0 to 5 when unmuting, which made the pre-roll faintly audible
+    const changes = this.stateChanges;
+    if (this.state === STATE.ENDED || Math.abs(this.time() - start) > 0.05) p.seekTo(start, true);
     p.unMute();
-    p.setVolume(0);
-    p.playVideo();
+    p.setVolume(volume);
+    if (!userStarted) p.playVideo();
     try {
-      // Wait until it really plays from the pre-roll point (a seek can land a moment late).
-      await this._poll(() => this.state === STATE.PLAYING && this.time() >= from - 0.3 && this.time() < start + 1, 8000, op, 'starting playback');
+      // Wait until it really plays from the start (a seek can land a moment late). A tap must
+      // start it anew: "playing" may still be the stale state of the muted try just before.
+      await this._poll(() => this.state === STATE.PLAYING && this.time() >= start - 0.3 && this.time() < start + 1
+        && (!userStarted || this.stateChanges > changes), userStarted ? Infinity : 8000, op, 'starting playback');
     } catch (err) {
       if (err instanceof TimeoutError) {
         p.pauseVideo();
@@ -275,9 +284,11 @@ export class ClipPlayer {
       }
       throw err;
     }
+    if (onStart) onStart();
 
-    let open = false;
-    let lastVol = 0;
+    const playingSince = performance.now();
+    let mutedChecked = userStarted;
+    let lastVol = volume;
     let lastPos = -1;
     let lastMove = performance.now();
     await new Promise((resolve, reject) => {
@@ -288,19 +299,20 @@ export class ClipPlayer {
         const now = performance.now();
         if (pos !== lastPos) { lastPos = pos; lastMove = now; }
         else if (now - lastMove > STALL_MS) return reject(new TimeoutError('playback stalled'));
-        if (!open && pos >= start - OPEN_EARLY) {
-          open = true;
-          p.setVolume(volume);
-          lastVol = volume;
-          if (onStart) onStart();
+        // A browser that only allows sound after a tap (iPhones) may let YouTube play muted instead.
+        if (!mutedChecked && now - playingSince >= MUTE_CHECK_MS) {
+          mutedChecked = true;
+          if (this._isMuted()) {
+            p.pauseVideo();
+            p.seekTo(start, true);
+            return reject(new AutoplayBlockedError());
+          }
         }
         const left = end - STOP_EARLY - pos;
-        if (open) {
-          if (onProgress) onProgress(Math.min(1, Math.max(0, (pos - start) / seconds)));
-          if (left > 0 && left <= FADE_OUT) {
-            const v = Math.round(volume * (left / FADE_OUT));
-            if (Math.abs(v - lastVol) >= 2) { p.setVolume(v); lastVol = v; }
-          }
+        if (onProgress) onProgress(Math.min(1, Math.max(0, (pos - start) / seconds)));
+        if (left > 0 && left <= FADE_OUT) {
+          const v = Math.round(volume * (left / FADE_OUT));
+          if (Math.abs(v - lastVol) >= 2) { p.setVolume(v); lastVol = v; }
         }
         if (left <= 0 || this.state === STATE.ENDED) {
           p.pauseVideo();

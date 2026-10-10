@@ -6,7 +6,7 @@ import { toAudio } from './sources.js';
 
 export const REPORT_REPO = 'fuyo1622/yoasobi-song-quiz';
 // The Google Form that collects reports, set by tools/google_form.py. null = open a GitHub issue instead.
-export const REPORT_FORM = null;
+export const REPORT_FORM = { id: '1FAIpQLSc28ilmhvujIem1jBawP4e9EEDaSal-C7fVUrxs4if4Y3vnDA', entry: 'entry.288304773' };
 const PROBLEMS = ['start', 'notChorus', 'offset', 'other'];
 const PROBLEM_EN = {
   start: 'The chorus starts at a different time',
