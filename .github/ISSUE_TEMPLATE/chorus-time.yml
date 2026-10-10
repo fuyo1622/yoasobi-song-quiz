@@ -1,0 +1,37 @@
+name: Chorus time report
+description: A clip starts at the wrong time, or the part played isn't the chorus.
+title: "Chorus time: "
+labels: ["chorus time"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping fix the timings! The quiz filled in most fields; add anything that helps.
+        感謝回報！大部分欄位已由測驗自動填寫。ご報告ありがとうございます。ほとんどの項目は自動で入力されています。
+  - type: input
+    id: song
+    attributes:
+      label: Song
+    validations:
+      required: true
+  - type: input
+    id: video
+    attributes:
+      label: Video you heard
+  - type: input
+    id: clip
+    attributes:
+      label: Clip
+  - type: input
+    id: problem
+    attributes:
+      label: What is wrong
+  - type: input
+    id: suggested
+    attributes:
+      label: Better start time
+      description: As shown on YouTube, for example 1:15.2 (optional)
+  - type: textarea
+    id: comment
+    attributes:
+      label: Comment

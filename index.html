@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YOASOBI Song Quiz</title>
+  <meta name="description" content="Guess YOASOBI songs from short clips: chorus, anywhere, or no-chorus mode. English, 繁體中文, 日本語.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230d1233'/%3E%3Cpath d='M19 14.2A7.2 7.2 0 1 1 9.8 5a5.6 5.6 0 0 0 9.2 9.2z' fill='%23ff5fa2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://www.youtube.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700;900&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="site-header">
+      <a class="brand" href="./" aria-label="YOASOBI">
+        <span class="brand-mark" id="brand-mark"></span>
+        <span>
+          <span class="brand-name">YOASOBI</span>
+          <span class="brand-sub" data-t="brand.sub">Song Quiz</span>
+        </span>
+      </a>
+      <div class="header-actions">
+        <label class="lang-pick" title="Language">
+          <span class="lang-icon" id="lang-icon" aria-hidden="true"></span>
+          <select id="lang" aria-label="Language"></select>
+        </label>
+        <a class="btn ghost sm" href="editor.html" id="editor-link" hidden data-t-aria="editor"><span class="hide-sm" data-t="editor">Timing editor</span></a>
+        <button class="btn ghost icon" id="theme-toggle" type="button"></button>
+      </div>
+    </header>
+
+    <!-- ============ SETUP ============ -->
+    <section id="setup" aria-labelledby="setup-title">
+      <div class="hero">
+        <h1 id="setup-title"><span data-t="hero.a">Can you name </span><span class="grad" data-t="hero.b">this song?</span></h1>
+        <p data-t="hero.p"></p>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-t="style.title">Play style</h2>
+        <div class="mode-grid two" id="style-grid" role="group"></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title" data-t="mode.title">Mode</h2>
+        <div class="mode-grid" id="mode-grid" role="group"></div>
+      </div>
+
+      <div class="card">
+        <div class="slider-field">
+          <label for="count" id="count-label"></label><output id="count-out" for="count"></output>
+          <input type="range" id="count" min="1" max="50" step="1">
+        </div>
+        <div class="slider-field">
+          <label for="clip" data-t="clip"></label><output id="clip-out" for="clip"></output>
+          <input type="range" id="clip" min="0.5" max="20" step="0.5">
+          <div class="chips" id="clip-chips" role="group"></div>
+        </div>
+        <div class="slider-field" id="think-field">
+          <label for="think" data-t="think"></label><output id="think-out" for="think"></output>
+          <input type="range" id="think" min="3" max="60" step="1">
+          <div class="chips" id="think-chips" role="group"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="pool-summary">
+          <h2 class="card-title" style="margin:0" data-t="songs">Songs</h2>
+          <span class="spacer"></span>
+          <span id="pool-count" class="muted"></span>
+          <button class="btn sm" id="pool-toggle" type="button" aria-expanded="false" aria-controls="pool"></button>
+        </div>
+        <div id="pool" hidden style="margin-top:12px"></div>
+      </div>
+
+      <div class="card">
+        <details class="more">
+          <summary data-t="more">More options</summary>
+          <div class="slider-field" style="margin:4px 0 8px">
+            <label for="volume" data-t="volume"></label><output id="volume-out" for="volume"></output>
+            <input type="range" id="volume" min="0" max="100" step="5">
+          </div>
+          <div id="switches"></div>
+        </details>
+      </div>
+
+      <div class="start-bar">
+        <button class="btn primary big" id="start" type="button"><span id="start-label">Start quiz</span></button>
+        <p class="start-hint" id="start-hint" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <!-- ============ PLAY ============ -->
+    <section id="play" hidden>
+      <div class="topbar">
+        <span class="qcount" id="qcount"></span>
+        <span class="pill accent" id="mode-pill"></span>
+        <span class="spacer"></span>
+        <span class="scorebox" id="scorebox"></span>
+        <button class="btn ghost icon" id="quit" type="button" data-t-aria="play.quit"></button>
+      </div>
+      <div class="progress-dots" id="dots" aria-hidden="true"></div>
+
+      <div class="stage" id="stage">
+        <div class="yt-slot" id="slot-0"></div>
+        <div class="yt-slot" id="slot-1"></div>
+        <div class="cover" id="cover"><div class="cover-inner" id="cover-inner"></div></div>
+      </div>
+
+      <div id="question-panel">
+        <div class="timer" id="timer" hidden>
+          <div class="timer-track"><div class="timer-fill" id="timer-fill"></div></div>
+          <span class="timer-num" id="timer-num"></span>
+        </div>
+        <div class="options" id="options" role="group"></div>
+        <div class="answer-bar" id="answer-bar"></div>
+        <div class="reveal" id="reveal" hidden aria-live="polite"></div>
+      </div>
+
+      <div id="results-panel" hidden></div>
+    </section>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#6bd6ff"/>
+        <stop offset="1" stop-color="#ff5fa2"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <noscript><p class="wrap">This quiz needs JavaScript.</p></noscript>
+  <script>
+    // Opened by double-clicking the file? Modules and YouTube don't work from file://, so say how to start it.
+    if (location.protocol === 'file:') {
+      document.getElementById('start').disabled = true;
+      var hint = document.getElementById('start-hint');
+      hint.className = 'start-hint warn';
+      hint.textContent = 'Open the quiz through its little server: double-click start.bat (or run "python server.py") and it opens http://localhost:8000 for you.';
+    }
+  </script>
+  <script type="module" src="js/quiz.js"></script>
+</body>
+</html>
