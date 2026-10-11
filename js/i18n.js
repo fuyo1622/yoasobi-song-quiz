@@ -202,6 +202,25 @@ const STRINGS = Object.fromEntries([
   s('rep.copied', 'Copied', '已複製', 'コピーしました'),
   s('rep.cancel', 'Cancel', '取消', 'キャンセル'),
   s('rep.badTime', 'Use minutes:seconds, e.g. 1:15.2', '請用「分:秒」格式，例如 1:15.2', '「分:秒」で入力してください（例：1:15.2）'),
+
+  s('fb.button', 'Feedback', '意見回饋', 'フィードバック'),
+  s('fb.title', 'Send feedback', '提供意見', 'フィードバックを送る'),
+  s('fb.intro', 'Ideas, problems, anything about the quiz: every message is read.',
+    '對這個測驗有任何想法、問題或建議，都歡迎告訴我們，每則都會看。',
+    'アイデアや不具合など、クイズについて何でもお送りください。すべて目を通します。'),
+  s('fb.what', 'What is it about?', '是關於什麼？', 'どんな内容ですか？'),
+  s('fb.idea', 'An idea or suggestion', '想法或建議', 'アイデア・要望'),
+  s('fb.bug', 'Something doesn\'t work', '有功能不正常', 'うまく動かない'),
+  s('fb.other', 'Something else', '其他', 'その他'),
+  s('fb.message', 'Your message', '你的意見', 'メッセージ'),
+  s('fb.empty', 'Please write a message first.', '請先寫下你的意見。', 'メッセージを入力してください。'),
+  s('fb.send', 'Send', '送出', '送信'),
+  s('fb.sent', 'Thanks for your feedback!', '謝謝你的回饋！', 'フィードバックありがとうございます！'),
+  s('fb.failed', 'Couldn\'t send it. Check your connection and try again.', '無法送出，請檢查網路連線後再試一次。',
+    '送信できませんでした。接続を確認して、もう一度お試しください。'),
+  s('fb.note', 'Sent anonymously, with your browser\'s name to help fix problems. No account needed.',
+    '匿名送出，並附上瀏覽器名稱以便修正問題，不需要帳號。',
+    '匿名で送信されます（不具合の調査のためブラウザ名も送ります）。アカウントは不要です。'),
 ]);
 
 let current = null;

@@ -8,7 +8,8 @@ or **practice** (no choices, no score). In English, 繁體中文 or 日本語. A
 Japanese-language songs are included.
 
 A clip starts at the wrong time, or isn't the chorus? Press **Report chorus time** after the
-answer. You can also [open an issue](https://github.com/fuyo1622/yoasobi-song-quiz/issues/new/choose).
+answer. Ideas or problems? Press **Feedback** at the top of the page. You can also
+[open an issue](https://github.com/fuyo1622/yoasobi-song-quiz/issues/new/choose).
 
 This repository only holds the published website and is updated automatically. A fan-made
 quiz, not affiliated with YOASOBI or their labels. The videos play in YouTube's embedded player.

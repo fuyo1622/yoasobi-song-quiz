@@ -9,7 +9,7 @@ import { MODES, pickClip, canPlay } from './clips.js';
 import { ClipPlayer, PlayerError, CancelledError, AutoplayBlockedError } from './player.js';
 import { t, lang, setLang, htmlLang, LANGS } from './i18n.js';
 import { sourcesFor } from './sources.js';
-import { openReport } from './report.js';
+import { openReport, openFeedback } from './report.js';
 
 const SETTINGS_KEY = 'yq.settings.v1';
 const SKIP_AFTER = 5;   // seconds into an ad when YouTube's Skip button appears
@@ -1004,6 +1004,8 @@ async function boot() {
   $('#lang-icon').innerHTML = ICONS.globe;
   $('#quit').innerHTML = ICONS.close;
   $('#editor-link').insertAdjacentHTML('afterbegin', ICONS.edit);
+  $('#feedback').insertAdjacentHTML('afterbegin', ICONS.feedback);
+  $('#feedback').addEventListener('click', () => openFeedback());
   $('#editor-link').hidden = !isLocal();
   $('#start').insertAdjacentHTML('afterbegin', ICONS.play);
   repaintTheme = initTheme($('#theme-toggle'), (light) => t(light ? 'theme.dark' : 'theme.light'));
